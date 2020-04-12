@@ -1,7 +1,7 @@
 <h1>ESP01-WebBased-Weather-Station</h1>
 <hr>
 <figure>
-  <img src = "https://user-images.githubusercontent.com/11696874/78469800-f15ea700-772c-11ea-9fcb-70e8d113f4eb.png">
+  <img src = "https://user-images.githubusercontent.com/11696874/79064885-28950100-7cb5-11ea-9724-6e048fa38de1.png">
   <figcaption> Weather Station web interface in action</figcaption>
 </figure>
 
