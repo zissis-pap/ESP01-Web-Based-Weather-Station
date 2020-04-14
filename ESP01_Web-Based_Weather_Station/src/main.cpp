@@ -1,17 +1,13 @@
 #include <Arduino.h>
 #include <Wire.h>
 #include <ESP8266WiFi.h>
-#include <WiFiClient.h>
 #include <ESP8266WebServer.h>
 #include <ESP8266mDNS.h>
-#include <WiFiUdp.h>
+#include <ArduinoOTA.h>
+#include <ArduinoJson.h>
 #include <NTPClient.h>
 #include "DHT.h" // Use DHT11 sensor library
 
-#ifndef STASSID
-#define STASSID "******"
-#define STAPSK  "******"
-#endif
 const char *ssid     = "******";
 const char *password = "******";
 ESP8266WebServer server(80);
@@ -41,13 +37,14 @@ String dayStamp;
 String timeStamp;
 
 // Store day and month names
-const String Days[7] = {"Sunday", "Monday", "Tuesday", "Wednesday", "Thursday", "Friday", "Saturday"}; // Store Day names
+const String Days[7] = {"Monday", "Tuesday", "Wednesday", "Thursday", "Friday", "Saturday", "Sunday"}; // Store Day names
 const String Months[12] = {"January", "February", "March", "April", "May", "June", "July", "August", "September", "October", "November", "December"};
 
 // Server Functions
 void handleRoot();
 void handleNotFound();
 String SendHTML();
+void SendJSONPackage();
 // Time Functions
 void UpdateTime();
 // Conditions Functions
@@ -72,29 +69,60 @@ void setup() {
     delay (500);
     Serial.print (".");
   }
-  if (MDNS.begin("esp8266")) {
-    Serial.println("MDNS responder started");
+  if (MDNS.begin("WEATHER_STATION")) {
+    Serial.println(F("MDNS responder started"));
   }
-  Serial.println("");
-  Serial.print("Connected to ");
-  Serial.println(ssid);
-  Serial.print("IP address: ");
-  Serial.println(WiFi.localIP());
+  ArduinoOTA.setPassword("STATION");
+  ArduinoOTA.onStart([]() {
+    String type;
+    if (ArduinoOTA.getCommand() == U_FLASH) {
+      type = "sketch";
+    } else { // U_FS
+      type = "filesystem";
+    }
+
+    // NOTE: if updating FS this would be the place to unmount FS using FS.end()
+    Serial.println("Start updating " + type);
+  });
+  ArduinoOTA.onEnd([]() {
+    Serial.println("\nEnd");
+  });
+  ArduinoOTA.onProgress([](unsigned int progress, unsigned int total) {
+    Serial.printf("Progress: %u%%\r", (progress / (total / 100)));
+  });
+  ArduinoOTA.onError([](ota_error_t error) {
+    Serial.printf("Error[%u]: ", error);
+    if (error == OTA_AUTH_ERROR) {
+      Serial.println("Auth Failed");
+    } else if (error == OTA_BEGIN_ERROR) {
+      Serial.println("Begin Failed");
+    } else if (error == OTA_CONNECT_ERROR) {
+      Serial.println("Connect Failed");
+    } else if (error == OTA_RECEIVE_ERROR) {
+      Serial.println("Receive Failed");
+    } else if (error == OTA_END_ERROR) {
+      Serial.println("End Failed");
+    }
+  });
   server.on("/", handleRoot);
   server.onNotFound(handleNotFound);
   server.begin();
+  ArduinoOTA.begin();
   // Initialize a NTPClient to get time
   timeClient.begin();
   timeClient.setTimeOffset(10800);
   dht.begin();
+  
 }
 
 void loop() {
+  ArduinoOTA.handle();
   UpdateTime();
   MeasureCond();
   ConditionCalculations();
   server.handleClient();
   MDNS.update();
+  SendJSONPackage();
 }
 
 String SendHTML() {
@@ -185,6 +213,28 @@ void handleNotFound() {
   }
   server.send(404, "text/plain", message);
   digitalWrite(LED_BUILTIN, 0);
+}
+
+void SendJSONPackage() {
+  static unsigned long check{0};
+  if (check <= millis() - 5000) {
+    StaticJsonDocument<1000> data;
+    data["hour"] = timeClient.getHours();
+    data["minutes"] = timeClient.getMinutes();
+    data["temp"] = Temperature;
+    data["hum"] = Humidity;
+    data["ip"] = WiFi.localIP().toString();
+    JsonArray hoursHist = data.createNestedArray("hoursHist");
+    JsonArray tempHist = data.createNestedArray("tempHist");
+    JsonArray humHist = data.createNestedArray("humHist");
+    for (uint8_t i = 0; i <= 23; i++) {
+      hoursHist.add(Hours[i]);
+      tempHist.add(TempHist[i]);
+      humHist.add(humHist[i]);
+    }
+    serializeJsonPretty(data, Serial);
+    check = millis();
+  }
 }
 
 void MeasureCond() { // Measure temperature and humidity every 2 seconds
@@ -300,7 +350,7 @@ int getYear() {
 String DateAndTime(boolean x) {
   if (x) {
     String buf = "";
-    buf += Days[timeClient.getDay()];
+    buf += Days[timeClient.getDay() - 1];
     buf += " the ";
     buf += getMonthDay();
     if (getMonthDay() == 1) buf += "st";
