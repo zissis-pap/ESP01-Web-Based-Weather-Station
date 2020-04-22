@@ -1,3 +1,14 @@
+/*--------------------------------------------------------------------
+ESP01 WEB-BASED WEATHER STATION, Version 1 
+THIS VERSION IS BASED ON THE ARDUINO WEB-BASED WEATHER STATION PROJECT
+Author: Zissis P. Papadopoulos - zissis.papadopoulos@gmail.com
+Patras, April 2020
+----------------------------------------------------------------------
+  Added features: 1) Arduino OTA update support 
+                  2) NTP based clock instead of RTC1302
+                  3) Exports Json-formatted data through serial
+  ****** THIS PROJECT IS FINISHED ******
+*/
 #include <Arduino.h>
 #include <Wire.h>
 #include <ESP8266WiFi.h>
@@ -69,7 +80,7 @@ void setup() {
     delay (500);
     Serial.print (".");
   }
-  if (MDNS.begin("WEATHER_STATION")) {
+  if (MDNS.begin("weather_station", WiFi.localIP())) {
     Serial.println(F("MDNS responder started"));
   }
   ArduinoOTA.setPassword("STATION");
@@ -107,6 +118,7 @@ void setup() {
   server.on("/", handleRoot);
   server.onNotFound(handleNotFound);
   server.begin();
+  MDNS.addService("http", "tcp", 80);
   ArduinoOTA.begin();
   // Initialize a NTPClient to get time
   timeClient.begin();
@@ -187,7 +199,9 @@ String SendHTML() {
     ptr += HumDHist[i];
     ptr += (F("%</font></td>"));
   }
-  ptr += (F("</tr></table><hr><br><p align='left'>Memory used: /2048 Bytes</p><hr><h3>ABOUT THE PROJECT</h3>"));
+  ptr += (F("</tr></table><hr><br><p align='left'>Free Memory: "));
+  ptr += (float)ESP.getFreeHeap()/1024;
+  ptr += (F(" KB</p><hr><h3>ABOUT THE PROJECT</h3>"));
   ptr += (F("<p align='right'>Author: Zissis Papadopoulos @2020</p></body></html>"));
   return ptr;
 }
